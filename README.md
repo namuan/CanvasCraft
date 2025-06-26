@@ -2,6 +2,8 @@
 
 CanvasCraft is a powerful web-based canvas application that combines image and text manipulation capabilities. It provides an intuitive interface for creating and editing visual content directly in your browser.
 
+![](docs/demo.png)
+
 ## Features
 
 ### Image Handling 🖼️
@@ -35,7 +37,7 @@ CanvasCraft is a powerful web-based canvas application that combines image and t
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/CanvasCraft.git
+git clone https://github.com/namuan/CanvasCraft.git
 ```
 
 2. Open `index.html` in your web browser
