@@ -261,6 +261,24 @@ fontColorInput.addEventListener('input', (e) => {
 
 // --- Window and System Handlers ---
 
+stage.on('wheel', (e) => {
+  e.evt.preventDefault();
+  const scaleBy = 1.1;
+  const oldScale = stage.scaleX();
+  const pointer = stage.getPointerPosition();
+  const mousePointTo = {
+    x: (pointer.x - stage.x()) / oldScale,
+    y: (pointer.y - stage.y()) / oldScale,
+  };
+  const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+  stage.scale({ x: newScale, y: newScale });
+  const newPos = {
+    x: pointer.x - mousePointTo.x * newScale,
+    y: pointer.y - mousePointTo.y * newScale,
+  };
+  stage.position(newPos);
+});
+
 window.addEventListener('resize', () => {
   stage.width(window.innerWidth);
   stage.height(window.innerHeight);
