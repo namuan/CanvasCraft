@@ -7,6 +7,9 @@ const stage = new Konva.Stage({
 const layer = new Konva.Layer();
 stage.add(layer);
 
+const uiLayer = new Konva.Layer();
+stage.add(uiLayer);
+
 const tr = new Konva.Transformer({
   keepRatio: false,
   boundBoxFunc: (oldBox, newBox) => {
@@ -16,7 +19,7 @@ const tr = new Konva.Transformer({
     return newBox;
   },
 });
-layer.add(tr);
+uiLayer.add(tr);
 
 // --- UI Controls ---
 const floatingControls = document.getElementById('floating-text-controls');
@@ -73,11 +76,21 @@ document.getElementById('file-input').addEventListener('change', function (e) {
 
 // --- General Object Handling (Selection, Transform, Delete) ---
 
-let currentSelection = null;
+// --- Selection Handling ---
+
+const selectionRectangle = new Konva.Rect({
+    fill: 'rgba(0,0,255,0.3)',
+    visible: false,
+    listening: false,
+});
+uiLayer.add(selectionRectangle);
+
+let selection = [];
+let x1, y1, x2, y2;
 
 function updateFloatingControls() {
-    if (currentSelection && currentSelection.className === 'Text') {
-        const textNode = currentSelection;
+    if (selection.length === 1 && selection[0].className === 'Text') {
+        const textNode = selection[0];
         const pos = textNode.absolutePosition();
         const textHeight = textNode.getClientRect({ skipTransform: false }).height;
         const gap = 1; // px
@@ -90,55 +103,149 @@ function updateFloatingControls() {
     }
 }
 
-stage.on('click tap', (e) => {
-  if (e.target === stage) {
-    tr.nodes([]);
-    if (currentSelection) {
-        currentSelection.shadowOpacity(0);
-        currentSelection.off('dragmove transform', updateFloatingControls);
-        currentSelection = null;
+function updateSelection() {
+    // Clear old selection effects
+    stage.find('.object').forEach(node => {
+        node.shadowOpacity(0);
+        node.off('dragmove transform', updateFloatingControls);
+    });
+
+    // Apply selection effects
+    selection.forEach(node => {
+        node.shadowColor('black');
+        node.shadowBlur(10);
+        node.shadowOpacity(0.6);
+        node.shadowOffsetX(5);
+        node.shadowOffsetY(5);
+    });
+
+    tr.nodes(selection);
+
+    if (selection.length === 1 && selection[0].className === 'Text') {
+        const node = selection[0];
+        node.on('dragmove transform', updateFloatingControls);
+        
+        // Update inputs
+        fontSizeSelect.value = node.fontSize();
+        fontColorInput.value = node.fill();
+        
+        // Update anchors for text
+        tr.enabledAnchors(['middle-left', 'middle-right']);
+        tr.boundBoxFunc((oldBox, newBox) => {
+            newBox.height = oldBox.height;
+            return newBox;
+        });
+    } else {
+        // Default anchors
+        tr.enabledAnchors(['top-left', 'top-right', 'bottom-left', 'bottom-right']);
+        tr.boundBoxFunc((oldBox, newBox) => newBox);
     }
+    
     updateFloatingControls();
-    return;
-  }
+}
 
-  if (e.target.getParent().className === 'Transformer') {
-    return;
-  }
-
-  if (e.target.hasName('object')) {
-    if (currentSelection !== e.target) {
-        if (currentSelection) {
-            currentSelection.shadowOpacity(0);
-            currentSelection.off('dragmove transform', updateFloatingControls);
-        }
-        currentSelection = e.target;
-        currentSelection.shadowColor('black');
-        currentSelection.shadowBlur(10);
-        currentSelection.shadowOpacity(0.6);
-        currentSelection.shadowOffsetX(5);
-        currentSelection.shadowOffsetY(5);
-
-        if (currentSelection.className === 'Text') {
-            currentSelection.on('dragmove transform', updateFloatingControls);
-        }
-
-        tr.nodes([currentSelection]);
-        if (currentSelection.className === 'Text') {
-            tr.enabledAnchors(['middle-left', 'middle-right']);
-            tr.boundBoxFunc((oldBox, newBox) => {
-                newBox.height = oldBox.height;
-                return newBox;
-            });
-            fontSizeSelect.value = currentSelection.fontSize();
-            fontColorInput.value = currentSelection.fill();
-        } else {
-            tr.enabledAnchors(['top-left', 'top-right', 'bottom-left', 'bottom-right']);
-            tr.boundBoxFunc((oldBox, newBox) => newBox);
-        }
+stage.on('click tap', (e) => {
+    // if selection rectangle was visible (we were dragging), ignore click
+    if (selectionRectangle.visible()) {
+        return;
     }
-  }
-  updateFloatingControls();
+
+    // if click on empty area - remove all selections
+    if (e.target === stage) {
+        selection = [];
+        updateSelection();
+        return;
+    }
+
+    // do nothing if clicked NOT on our rectangles
+    if (!e.target.hasName('object')) {
+        return;
+    }
+
+    // do we pressed shift or ctrl?
+    const metaPressed = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+    const isSelected = selection.includes(e.target);
+
+    if (!metaPressed && !isSelected) {
+        // if no key pressed and the node is not selected
+        // select just one
+        selection = [e.target];
+    } else if (metaPressed && isSelected) {
+        // if we pressed keys and node was selected
+        // we need to remove it from selection:
+        selection = selection.filter(node => node !== e.target);
+    } else if (metaPressed && !isSelected) {
+        // add the node into selection
+        selection.push(e.target);
+    }
+    
+    updateSelection();
+});
+
+stage.on('mousedown touchstart', (e) => {
+    if (e.target !== stage) {
+        return;
+    }
+    e.evt.preventDefault();
+    
+    const transform = stage.getAbsoluteTransform().copy();
+    transform.invert();
+    const pos = stage.getPointerPosition();
+    const layerPos = transform.point(pos);
+    
+    x1 = layerPos.x;
+    y1 = layerPos.y;
+    x2 = x1;
+    y2 = y1;
+
+    selectionRectangle.width(0);
+    selectionRectangle.height(0);
+    selectionRectangle.visible(true);
+});
+
+stage.on('mousemove touchmove', (e) => {
+    if (!selectionRectangle.visible()) {
+        return;
+    }
+    e.evt.preventDefault();
+    
+    const transform = stage.getAbsoluteTransform().copy();
+    transform.invert();
+    const pos = stage.getPointerPosition();
+    const layerPos = transform.point(pos);
+    
+    x2 = layerPos.x;
+    y2 = layerPos.y;
+
+    selectionRectangle.setAttrs({
+        x: Math.min(x1, x2),
+        y: Math.min(y1, y2),
+        width: Math.abs(x2 - x1),
+        height: Math.abs(y2 - y1),
+    });
+});
+
+stage.on('mouseup touchend', (e) => {
+    if (!selectionRectangle.visible()) {
+        return;
+    }
+    e.evt.preventDefault();
+    
+    setTimeout(() => {
+        selectionRectangle.visible(false);
+    });
+
+    if (selectionRectangle.width() < 5 && selectionRectangle.height() < 5) {
+         return;
+    }
+
+    const shapes = stage.find('.object');
+    const box = selectionRectangle.getClientRect();
+    const selected = shapes.filter((shape) =>
+        Konva.Util.haveIntersection(box, shape.getClientRect())
+    );
+    selection = selected;
+    updateSelection();
 });
 
 // --- Text Editing and Creation ---
@@ -247,16 +354,20 @@ stage.on('dblclick dbltap', (e) => {
 // --- Style Controls ---
 
 fontSizeSelect.addEventListener('change', (e) => {
-    if (currentSelection && currentSelection.className === 'Text') {
-        currentSelection.fontSize(parseInt(e.target.value, 10));
-        updateFloatingControls(); // Update position after size change
-    }
+    selection.forEach(node => {
+        if (node.className === 'Text') {
+            node.fontSize(parseInt(e.target.value, 10));
+        }
+    });
+    updateFloatingControls(); // Update position after size change
 });
 
 fontColorInput.addEventListener('input', (e) => {
-    if (currentSelection && currentSelection.className === 'Text') {
-        currentSelection.fill(e.target.value);
-    }
+    selection.forEach(node => {
+        if (node.className === 'Text') {
+            node.fill(e.target.value);
+        }
+    });
 });
 
 // --- Window and System Handlers ---
@@ -286,11 +397,12 @@ window.addEventListener('resize', () => {
 
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (currentSelection) {
-      currentSelection.off('dragmove transform', updateFloatingControls);
-      currentSelection.destroy();
+    if (selection.length > 0) {
+      selection.forEach(node => {
+          node.destroy();
+      });
+      selection = [];
       tr.nodes([]);
-      currentSelection = null;
       updateFloatingControls();
     }
   }
