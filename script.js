@@ -146,7 +146,7 @@ function updateSelection() {
 
 stage.on('click tap', (e) => {
     // if selection rectangle was visible (we were dragging), ignore click
-    if (selectionRectangle.visible()) {
+    if (selectionRectangle.visible() && (selectionRectangle.width() >= 5 || selectionRectangle.height() >= 5)) {
         return;
     }
 
