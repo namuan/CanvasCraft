@@ -74,6 +74,12 @@ document.getElementById('file-input').addEventListener('change', function (e) {
   }
 });
 
+document.getElementById('reset-zoom-button').addEventListener('click', () => {
+  stage.scale({ x: 1, y: 1 });
+  stage.position({ x: 0, y: 0 });
+  stage.batchDraw();
+});
+
 // --- General Object Handling (Selection, Transform, Delete) ---
 
 // --- Selection Handling ---
