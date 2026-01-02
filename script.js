@@ -94,6 +94,45 @@ uiLayer.add(selectionRectangle);
 let selection = [];
 let x1, y1, x2, y2;
 
+let isSpaceDown = false;
+let isPanning = false;
+let lastPanPointerPos = null;
+let suppressNextStageClick = false;
+
+function isTextInputActive() {
+    const active = document.activeElement;
+    if (!active) {
+        return false;
+    }
+    const tagName = active.tagName;
+    return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || active.isContentEditable;
+}
+
+function shouldStartPanning(e) {
+    if (e.target !== stage) {
+        return false;
+    }
+    const evt = e.evt;
+    if (!evt) {
+        return false;
+    }
+    if (typeof evt.type === 'string' && evt.type.startsWith('touch')) {
+        return false;
+    }
+    if (evt.pointerType === 'touch') {
+        return false;
+    }
+
+    const button = typeof evt.button === 'number' ? evt.button : null;
+    const buttons = typeof evt.buttons === 'number' ? evt.buttons : null;
+
+    const isMiddleMouse = button === 1 || (buttons !== null && (buttons & 4) === 4);
+    const isLeftMouse = button === 0 || (buttons !== null && (buttons & 1) === 1);
+    const isSpaceLeftDrag = isLeftMouse && isSpaceDown;
+
+    return isMiddleMouse || isSpaceLeftDrag;
+}
+
 function updateFloatingControls() {
     if (selection.length === 1 && selection[0].className === 'Text') {
         const textNode = selection[0];
@@ -155,6 +194,11 @@ stage.on('click tap', (e) => {
     if (selectionRectangle.visible() && (selectionRectangle.width() >= 5 || selectionRectangle.height() >= 5)) {
         return;
     }
+    
+    if (suppressNextStageClick) {
+        suppressNextStageClick = false;
+        return;
+    }
 
     // if click on empty area - remove all selections
     if (e.target === stage) {
@@ -189,6 +233,14 @@ stage.on('click tap', (e) => {
 });
 
 stage.on('mousedown touchstart', (e) => {
+    if (shouldStartPanning(e)) {
+        e.evt.preventDefault();
+        isPanning = true;
+        suppressNextStageClick = true;
+        lastPanPointerPos = stage.getPointerPosition();
+        return;
+    }
+
     if (e.target !== stage) {
         return;
     }
@@ -210,6 +262,24 @@ stage.on('mousedown touchstart', (e) => {
 });
 
 stage.on('mousemove touchmove', (e) => {
+    if (isPanning) {
+        e.evt.preventDefault();
+        const pos = stage.getPointerPosition();
+        if (!pos) {
+            return;
+        }
+        if (!lastPanPointerPos) {
+            lastPanPointerPos = pos;
+            return;
+        }
+        const dx = pos.x - lastPanPointerPos.x;
+        const dy = pos.y - lastPanPointerPos.y;
+        stage.position({ x: stage.x() + dx, y: stage.y() + dy });
+        stage.batchDraw();
+        lastPanPointerPos = pos;
+        return;
+    }
+
     if (!selectionRectangle.visible()) {
         return;
     }
@@ -232,6 +302,14 @@ stage.on('mousemove touchmove', (e) => {
 });
 
 stage.on('mouseup touchend', (e) => {
+    if (isPanning) {
+        e.evt.preventDefault();
+        isPanning = false;
+        lastPanPointerPos = null;
+        suppressNextStageClick = true;
+        return;
+    }
+
     if (!selectionRectangle.visible()) {
         return;
     }
@@ -402,6 +480,9 @@ window.addEventListener('resize', () => {
 });
 
 window.addEventListener('keydown', (e) => {
+  if ((e.code === 'Space' || e.key === ' ') && !isTextInputActive()) {
+    isSpaceDown = true;
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (selection.length > 0) {
       selection.forEach(node => {
@@ -412,4 +493,17 @@ window.addEventListener('keydown', (e) => {
       updateFloatingControls();
     }
   }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'Space' || e.key === ' ') {
+    isSpaceDown = false;
+  }
+});
+
+window.addEventListener('blur', () => {
+  isSpaceDown = false;
+  isPanning = false;
+  lastPanPointerPos = null;
+  suppressNextStageClick = false;
 });
